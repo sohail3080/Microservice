@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+fastembed
+qdrant-client
+pydantic
+python-dotenv
+httpx
