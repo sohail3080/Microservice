@@ -1,8 +1,6 @@
 fastapi
-uvicorn
-langchain-community
-langchain-text-splitters
-unstructured
-python-magic
-httpx
+uvicorn[standard]
+qdrant-client
+fastembed
 python-dotenv
+httpx

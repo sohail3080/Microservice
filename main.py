@@ -10,6 +10,8 @@ from pydantic import BaseModel
 from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
+from fastapi import Request
+
 
 # ========================================= CONFIG =========================================
 load_dotenv()
@@ -27,15 +29,15 @@ class QueryRequest(BaseModel):
     query: str
     backend: Literal["custom"]
     model: str
-    custom_url: str
+    custom_url: str | None = None
 
 
 # ========================================= SERVICES =========================================
 
 # Qdrant connection (read-only service)
 qdrant = QdrantClient(
-    url=os.environ.get("QDRANT_URL"),
-    api_key=os.environ.get("QDRANT_API_KEY"),
+    url=os.environ.get("QdrantClientURL"),
+    api_key=os.environ.get("QdrantClientAPIKey"),
 )
 
 # Embedding model (local)
@@ -123,48 +125,62 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-BASE_URL = "/v1/query-service"
+BASE_URL = "/v1/api"
 
 
 # ========================================= QUERY ENDPOINT =========================================
 
 
 @app.post(f"{BASE_URL}/query")
-async def query_news(payload: QueryRequest, api_key: str | None = Header(default=None)):
-    if not payload.query:
-        raise HTTPException(status_code=400, detail="Query is required")
+async def query_news(payload: QueryRequest, request: Request):
+    try:
+        if payload.query:
+            query_text = payload.query
+            query_backend = payload.backend
+            query_model = payload.model
+            query_apikey = request._headers.get("api_key")
+            query_custom_url = payload.custom_url
 
-    # 1️⃣ Embed query
-    query_vector = next(iter(embedder.embed(payload.query)))
+            # 1️⃣ Embed query
+            query_vector = next(iter(embedder.embed(query_text)))
 
-    # 2️⃣ Search Qdrant
-    results = qdrant.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,
-        with_payload=True,
-        limit=QUERY_LIMIT,
-    )
+            # 2️⃣ Search Qdrant
+            results = qdrant.query_points(
+                collection_name=COLLECTION_NAME,
+                query=query_vector,
+                with_payload=True,
+                limit=QUERY_LIMIT,
+            )
 
-    if not results.points:
-        return {
-            "answer": "I don't know.",
-            "chunks_found": 0,
-        }
+            # Same fallback behavior as original
+            if not query_backend:
+                return {
+                    "status": "query received",
+                    "query": query_text,
+                    "result": results,
+                }
 
-    # 3️⃣ Build context
-    context = build_context(results)
+            # Handle custom backend only (same as original)
+            if query_backend == "custom":
+                context = build_context(results)
 
-    # 4️⃣ Call LLM
-    answer = await call_custom_llm(
-        query=payload.query,
-        context=context,
-        model=payload.model,
-        custom_url=payload.custom_url,
-        api_key=api_key,
-    )
+                answer = await call_custom_llm(
+                    query=query_text,
+                    context=context,
+                    model=query_model,
+                    custom_url=query_custom_url,
+                    api_key=query_apikey,
+                )
 
-    return {
-        "query": payload.query,
-        "answer": answer,
-        "chunks_found": len(results.points),
-    }
+                return {
+                    "status": "query received",
+                    "query": query_text,
+                    "result": answer,
+                    "chunks": results,
+                }
+
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to fetch data",
+        )
