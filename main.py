@@ -68,7 +68,7 @@ def chunk_documents(urls: List[str]):
 
 # ================================= ENDPOINT =================================
 
-@app.post("/v1/api/ingest")
+@app.post("/v1/api/save-url")
 async def ingest_urls(payload: URLRequest):
 
     try:
