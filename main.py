@@ -125,13 +125,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-BASE_URL = "/v1/api"
-
-
 # ========================================= QUERY ENDPOINT =========================================
 
 
-@app.post(f"{BASE_URL}/query")
+@app.post(f"/v1/api/query")
 async def query_news(payload: QueryRequest, request: Request):
     try:
         if payload.query:
