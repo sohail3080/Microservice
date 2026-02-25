@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 from langchain_community.document_loaders import UnstructuredURLLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-
 # ================================= CONFIG =================================
 
 load_dotenv()
@@ -18,18 +17,15 @@ EMBEDDING_SERVICE_URL = os.getenv("EMBEDDING_SERVICE_URL")
 CHUNK_SIZE = 200
 CHUNK_OVERLAP = 0
 
-
 # ================================= MODELS =================================
 
 class URLRequest(BaseModel):
     urls: List[str]
 
-
 # ================================= APP =================================
 
 app = FastAPI(title="Ingestion Service")
-
-
+ 
 # ================================= UTIL =================================
 
 def chunk_documents(urls: List[str]):
@@ -69,7 +65,7 @@ def chunk_documents(urls: List[str]):
 # ================================= ENDPOINT =================================
 
 @app.post("/v1/api/save-url")
-async def ingest_urls(payload: URLRequest):
+async def save_urls(payload: URLRequest):
 
     try:
         chunks = chunk_documents(payload.urls)
