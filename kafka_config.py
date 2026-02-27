@@ -15,5 +15,5 @@ class KafkaSettings:
     SSL_CERTFILE: str | None = os.getenv("KAFKA_SSL_CERTFILE")
     SSL_KEYFILE: str | None = os.getenv("KAFKA_SSL_KEYFILE")
 
-    # Topics (produce query events for analytics/audit)
+    # Producer only: send query events to this topic (analytics/audit)
     QUERY_EVENTS_TOPIC: str = os.getenv("KAFKA_QUERY_EVENTS_TOPIC", "query-events")

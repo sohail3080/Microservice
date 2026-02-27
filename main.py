@@ -163,28 +163,7 @@ async def query_news(payload: QueryRequest, request: Request):
                 limit=QUERY_LIMIT,
             )
 
-            # Same fallback behavior as original
-            if not query_backend:
-                if kafka_producer:
-                    try:
-                        event = {
-                            "query": query_text,
-                            "backend": "none",
-                            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-                        }
-                        await kafka_producer.send_and_wait(
-                            KafkaSettings.QUERY_EVENTS_TOPIC,
-                            value=event,
-                        )
-                    except Exception:
-                        pass
-                return {
-                    "status": "query received",
-                    "query": query_text,
-                    "result": results,
-                }
-
-            # Handle custom backend only (same as original)
+            # Handle custom backend only 
             if query_backend == "custom":
                 context = build_context(results)
 
@@ -196,6 +175,11 @@ async def query_news(payload: QueryRequest, request: Request):
                     api_key=query_apikey,
                 )
 
+                if kafka_producer:
+                    print("Kafka producer is available")
+                else:
+                    print("Kafka producer is not available")
+
                 # Publish query event to Kafka when producer is available
                 if kafka_producer:
                     try:
@@ -205,12 +189,14 @@ async def query_news(payload: QueryRequest, request: Request):
                             "backend": query_backend,
                             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                         }
-                        await kafka_producer.send_and_wait(
+                        test = await kafka_producer.send_and_wait(
                             KafkaSettings.QUERY_EVENTS_TOPIC,
                             value=event,
                         )
+                        print("Kafka publish successful:", test)
                     except Exception:
-                        pass  # Don't fail the request if Kafka publish fails
+                        # pass  # Don't fail the request if Kafka publish fails
+                        print("Kafka publish failed:", str(e))
 
                 return {
                     "status": "query received",
