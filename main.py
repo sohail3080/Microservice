@@ -1,5 +1,6 @@
 # ================================= IMPORTS =================================
 
+import asyncio
 import os
 import uuid
 from typing import List, Dict, Any
@@ -12,6 +13,9 @@ from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from dotenv import load_dotenv
+
+from kafka_factory import create_kafka_consumer
+from kafka_config import KafkaSettings
 
 
 # ================================= CONFIG =================================
@@ -100,6 +104,41 @@ def create_points(chunks: List[ChunkData], embeddings: List[List[float]]):
     return points
 
 
+def process_chunk_from_kafka(chunk_payload: dict) -> None:
+    """Embed and store a single chunk (from Kafka message) into Qdrant."""
+    chunk = ChunkData(
+        text=chunk_payload["text"],
+        source_url=chunk_payload["source_url"],
+        doc_index=chunk_payload["doc_index"],
+        chunk_size=chunk_payload["chunk_size"],
+    )
+    texts = [chunk.text]
+    embeddings = generate_embeddings(texts)
+    points = create_points([chunk], embeddings)
+    qdrant_client.upsert(
+        collection_name=COLLECTION_NAME,
+        points=points,
+    )
+
+
+async def run_kafka_consumer():
+    """Consume chunks from Kafka ingest topic and embed/store in Qdrant."""
+    if not KafkaSettings.BOOTSTRAP_SERVERS:
+        print("Kafka not configured (KAFKA_BOOTSTRAP_SERVERS unset); skipping consumer.")
+        return
+    consumer = create_kafka_consumer(KafkaSettings.INGEST_TOPIC)
+    await consumer.start()
+    try:
+        async for msg in consumer:
+            try:
+                process_chunk_from_kafka(msg.value)
+                print(f"Embedded and stored chunk from {msg.value.get('source_url', '?')}")
+            except Exception as e:
+                print(f"Kafka chunk processing error: {e}")
+    finally:
+        await consumer.stop()
+
+
 # ================================= LIFESPAN =================================
 
 @asynccontextmanager
@@ -107,8 +146,20 @@ async def lifespan(app: FastAPI):
     # Startup: ensure collection exists
     await ensure_collection_exists()
     print("Embedding Service started successfully")
+
+    consumer_task = None
+    if KafkaSettings.BOOTSTRAP_SERVERS:
+        consumer_task = asyncio.create_task(run_kafka_consumer())
+        print(f"Kafka consumer subscribed to {KafkaSettings.INGEST_TOPIC}")
+
     yield
-    # Shutdown: cleanup if needed
+
+    if consumer_task and not consumer_task.done():
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
     print("Embedding Service shutting down")
 
 
