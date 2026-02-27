@@ -6,3 +6,4 @@ unstructured
 python-magic
 httpx
 python-dotenv
+aiokafka

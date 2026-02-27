@@ -8,6 +8,10 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from langchain_community.document_loaders import UnstructuredURLLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from contextlib import asynccontextmanager
+from kafka_factory import create_kafka_producer
+from kafka_config import KafkaSettings
+import asyncio
 
 # ================================= CONFIG =================================
 
@@ -19,14 +23,31 @@ CHUNK_OVERLAP = 0
 
 # ================================= MODELS =================================
 
+
 class URLRequest(BaseModel):
     urls: List[str]
 
+
 # ================================= APP =================================
 
-app = FastAPI(title="Ingestion Service")
- 
+producer = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global producer
+    producer = create_kafka_producer()
+    await producer.start()
+
+    yield
+    # Shutdown
+    await producer.stop()
+
+
+app = FastAPI(title="Ingestion Service", lifespan=lifespan)
+
 # ================================= UTIL =================================
+
 
 def chunk_documents(urls: List[str]):
 
@@ -52,17 +73,20 @@ def chunk_documents(urls: List[str]):
         chunks = splitter.split_text(doc.page_content)
 
         for chunk in chunks:
-            processed_chunks.append({
-                "text": chunk,
-                "source_url": urls[i],
-                "doc_index": i,
-                "chunk_size": len(chunk),
-            })
+            processed_chunks.append(
+                {
+                    "text": chunk,
+                    "source_url": urls[i],
+                    "doc_index": i,
+                    "chunk_size": len(chunk),
+                }
+            )
 
     return processed_chunks
 
 
 # ================================= ENDPOINT =================================
+
 
 @app.post("/v1/api/save-url")
 async def save_urls(payload: URLRequest):
@@ -70,24 +94,15 @@ async def save_urls(payload: URLRequest):
     try:
         chunks = chunk_documents(payload.urls)
 
-        # Send chunks to Embedding Service
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{EMBEDDING_SERVICE_URL}/v1/api/embed-store",
-                json={"chunks": chunks},
-                timeout=60.0,
-            )
-
-        response.raise_for_status()
+        # Send chunks to Kafka
+        for chunk in chunks:
+            await producer.send_and_wait(KafkaSettings.INGEST_TOPIC, chunk)
 
         return {
             "status": "success",
             "total_chunks": len(chunks),
-            "embedding_service_response": response.json()
+            "sent_to_topic": KafkaSettings.INGEST_TOPIC,
         }
 
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=500, detail="Embedding service failed")
-
-    except Exception:
-        raise HTTPException(status_code=400, detail="Failed to ingest URLs")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
