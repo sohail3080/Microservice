@@ -2,6 +2,7 @@
 import os
 from typing import Literal
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 import httpx
 from dotenv import load_dotenv
@@ -11,6 +12,9 @@ from fastembed import TextEmbedding
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from fastapi import Request
+
+from kafka_factory import create_kafka_producer
+from kafka_config import KafkaSettings
 
 
 # ========================================= CONFIG =========================================
@@ -33,6 +37,9 @@ class QueryRequest(BaseModel):
 
 
 # ========================================= SERVICES =========================================
+
+# Kafka producer (optional; used for query events when KAFKA_BOOTSTRAP_SERVERS is set)
+kafka_producer = None
 
 # Qdrant connection (read-only service)
 qdrant = QdrantClient(
@@ -110,6 +117,7 @@ CONTEXT:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global kafka_producer
     # Ensure collection exists (safe check)
     collections = qdrant.get_collections().collections
     if COLLECTION_NAME not in [c.name for c in collections]:
@@ -120,7 +128,13 @@ async def lifespan(app: FastAPI):
                 distance=Distance.COSINE,
             ),
         )
+    if KafkaSettings.BOOTSTRAP_SERVERS:
+        kafka_producer = create_kafka_producer()
+        await kafka_producer.start()
     yield
+    if kafka_producer:
+        await kafka_producer.stop()
+        kafka_producer = None
 
 
 app = FastAPI(lifespan=lifespan)
@@ -151,6 +165,19 @@ async def query_news(payload: QueryRequest, request: Request):
 
             # Same fallback behavior as original
             if not query_backend:
+                if kafka_producer:
+                    try:
+                        event = {
+                            "query": query_text,
+                            "backend": "none",
+                            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                        }
+                        await kafka_producer.send_and_wait(
+                            KafkaSettings.QUERY_EVENTS_TOPIC,
+                            value=event,
+                        )
+                    except Exception:
+                        pass
                 return {
                     "status": "query received",
                     "query": query_text,
@@ -168,6 +195,22 @@ async def query_news(payload: QueryRequest, request: Request):
                     custom_url=query_custom_url,
                     api_key=query_apikey,
                 )
+
+                # Publish query event to Kafka when producer is available
+                if kafka_producer:
+                    try:
+                        event = {
+                            "query": query_text,
+                            "model": query_model,
+                            "backend": query_backend,
+                            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                        }
+                        await kafka_producer.send_and_wait(
+                            KafkaSettings.QUERY_EVENTS_TOPIC,
+                            value=event,
+                        )
+                    except Exception:
+                        pass  # Don't fail the request if Kafka publish fails
 
                 return {
                     "status": "query received",

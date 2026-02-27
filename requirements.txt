@@ -4,3 +4,4 @@ qdrant-client
 fastembed
 python-dotenv
 httpx
+aiokafka
