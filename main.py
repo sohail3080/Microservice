@@ -152,10 +152,10 @@ async def query_news(payload: QueryRequest, request: Request):
             query_apikey = request._headers.get("api_key")
             query_custom_url = payload.custom_url
 
-            # 1️⃣ Embed query
+            # Embed query
             query_vector = next(iter(embedder.embed(query_text)))
 
-            # 2️⃣ Search Qdrant
+            # Search Qdrant
             results = qdrant.query_points(
                 collection_name=COLLECTION_NAME,
                 query=query_vector,
@@ -175,12 +175,7 @@ async def query_news(payload: QueryRequest, request: Request):
                     api_key=query_apikey,
                 )
 
-                if kafka_producer:
-                    print("Kafka producer is available")
-                else:
-                    print("Kafka producer is not available")
-
-                # Publish query event to Kafka when producer is available
+                # Query is published to Kafka when producer is available
                 if kafka_producer:
                     try:
                         event = {
@@ -189,14 +184,12 @@ async def query_news(payload: QueryRequest, request: Request):
                             "backend": query_backend,
                             "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                         }
-                        test = await kafka_producer.send_and_wait(
+                        await kafka_producer.send_and_wait(
                             KafkaSettings.QUERY_EVENTS_TOPIC,
                             value=event,
                         )
-                        print("Kafka publish successful:", test)
                     except Exception:
-                        # pass  # Don't fail the request if Kafka publish fails
-                        print("Kafka publish failed:", str(e))
+                        pass  # The request will not fail if Kafka publish fails
 
                 return {
                     "status": "query received",
