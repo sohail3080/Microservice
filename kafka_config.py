@@ -15,8 +15,5 @@ class KafkaSettings:
     SSL_CERTFILE: str | None = os.getenv("KAFKA_SSL_CERTFILE")
     SSL_KEYFILE: str | None = os.getenv("KAFKA_SSL_KEYFILE")
 
-    # Topics
+    # Topics (produce chunks to ingest-topic; embedding consumes from same topic)
     INGEST_TOPIC: str = os.getenv("KAFKA_INGEST_TOPIC", "ingest-topic")
-    EMBED_TOPIC: str = os.getenv("KAFKA_EMBED_TOPIC", "embed-topic")
-
-    GROUP_ID: str = os.getenv("KAFKA_GROUP_ID", "rag-group")
