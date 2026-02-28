@@ -1,4 +1,4 @@
-# RAG-Powered News Q&A — Microservices (Ingestion, Embedding, Query)
+# RAG-Powered News Q&A — Microservices (Ingestion, Embedding, Query) 
 
 Backend for saving news URLs and querying them with AI-powered search. Built as **three microservices** communicating via **Kafka** (Aiven free tier) and sharing a **Qdrant** vector store.
 
@@ -28,7 +28,7 @@ The transformation from monolith to microservices was a deliberate learning exer
        │                                                                                                       │
        │ POST /query                  ┌──────────────┐     query       ┌─────────────┐                         ▼
        └─────────────────────────────►│    Query     │────────────────►│   Kafka     │────────────────►┌──────────────┐
-                                      │   Service    │  query-events   │  (optional) │                 │   Qdrant     │
+                                      │   Service    │  query-events   │             │                 │   Qdrant     │
                                       └──────┬───────┘                 └─────────────┘                 │  (vectors)   │
                                              │ search & LLM                                            │              │
                                              └────────────────────────────────────────────────────────►└──────────────┘
@@ -250,4 +250,4 @@ In a monolithic system, if the embedding logic failed, the entire ingestion and 
 
 ---
 
-**Note:** This is a learning project to understand Kafka and microservices. Not intended for production as-is. This project actually is based on a another learning project I did, [linkmind](https://github.com/sohail3080/linkmind) Feedback and issues are welcome.
+**Note:** This is a learning project to understand Kafka and microservices. Not intended for production as-is. This project actually is based on a another learning project I did, [linkmind](https://github.com/sohail3080/linkmind). Feedback and issues are welcome.
